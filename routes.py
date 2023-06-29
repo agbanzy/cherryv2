@@ -199,3 +199,77 @@ def generate_code():
     response = openai.Completion.create(engine="text-davinci-002", prompt=prompt, temperature=0.5, max_tokens=100)
 
     return jsonify({'code': response.choices[0].text.strip()}), 200
+@app.route('/signup', methods=['POST'])
+def signup():
+    body = request.get_json()
+    user = User(**body)
+    user.hash_password()
+    user.save()
+    return {'id': str(user.id)}, 200
+
+@app.route('/login', methods=['POST'])
+def login():
+    body = request.get_json()
+    user = User.objects.get(email=body.get('email'))
+    authorized = user.check_password(body.get('password'))
+    if not authorized:
+        return {'error': 'Email or password invalid'}, 401
+
+    access_token = create_access_token(identity=str(user.id))
+    return {'token': access_token}, 200
+
+@app.route('/command', methods=['POST'])
+@jwt_required()
+def process_command():
+    command_text = request.json.get('command')
+    response = detect_intent_texts('your-project-id', 'unique-session-id', command_text, 'en-US')
+    return jsonify(response), 200
+
+@app.route('/suggestions', methods=['GET'])
+@jwt_required()
+def get_suggestions():
+    user_id = get_jwt_identity()
+    user = User.objects.get(id=user_id)
+    commands = get_top_commands(user.command_history)
+    return jsonify(commands), 200
+
+@app.route('/process_image', methods=['POST'])
+@jwt_required()
+def process_image():
+    image = request.files['image']
+    image_data = open_image(image)
+    processed_image_data = resize_image(image_data, 128, 128)
+    save_image(processed_image_data, 'new_image.png')
+    return send_file('new_image.png', mimetype='image/png'), 200
+
+@app.route('/generate_code', methods=['POST'])
+@jwt_required()
+def handle_generate_code():
+    code_text = request.json.get('code_text')
+    generated_code = generate_code(code_text)
+    return jsonify({'code': generated_code}), 200
+
+@app.route('/email', methods=['GET', 'POST'])
+@jwt_required()
+def handle_email():
+    if request.method == 'GET':
+        return jsonify(read_email())
+    elif request.method == 'POST':
+        recipient = request.json.get('recipient')
+        subject = request.json.get('subject')
+        body = request.json.get('body')
+        send_email(recipient, subject, body)
+        return jsonify({'status': 'Email sent'}), 200
+
+@app.route('/feedback', methods=['POST'])
+@jwt_required()
+def submit_feedback():
+    feedback_text = request.json.get('feedback')
+    user_id = get_jwt_identity()
+    feedback = Feedback(user_id=user_id, text=feedback_text)
+    feedback.save()
+    return jsonify({'status': 'Feedback submitted'}), 200
+
+
+
+
